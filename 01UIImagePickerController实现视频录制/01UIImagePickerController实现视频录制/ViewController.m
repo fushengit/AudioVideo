@@ -68,7 +68,7 @@
         _avPlayer = [[AVPlayer alloc] init];
         AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:_avPlayer];
         layer.frame = self.view.bounds;
-        [self.view.layer addSublayer:layer];
+        [self.view.layer insertSublayer:layer atIndex:0];
     }
     return _avPlayer;
 }

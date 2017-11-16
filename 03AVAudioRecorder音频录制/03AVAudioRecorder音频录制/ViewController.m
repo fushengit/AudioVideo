@@ -17,6 +17,17 @@
 @implementation ViewController
 - (void)viewDidLoad {
     [super viewDidLoad];
+    
+    //添加这个保证第一次录制成功
+    NSError * sessionError;
+    [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord error:&sessionError];
+    if(sessionError != nil){
+        NSLog(@"Error creating session: %@", [sessionError description]);
+    }
+    else{
+        [[AVAudioSession sharedInstance] setActive:YES error:nil];
+    }
+    
 }
 - (IBAction)btnAction:(UIButton *)sender {
     if (!sender.selected) {
@@ -43,7 +54,6 @@
     }
     sender.selected = !sender.selected;
 }
-
 - (void)playeWithUrl:(NSURL*)url{
     _audioPlayer = [[AVAudioPlayer alloc]initWithContentsOfURL:url error:nil];
     _audioPlayer.volume = 1;
@@ -54,7 +64,6 @@
         NSLog(@"播放失败");
     }
 }
-
 #pragma mark   ---
 - (void)audioRecorderDidFinishRecording:(AVAudioRecorder *)recorder successfully:(BOOL)flag{
     [self playeWithUrl:recorder.url];
@@ -66,7 +75,6 @@
 - (void)audioPlayerDecodeErrorDidOccur:(AVAudioPlayer *)player error:(NSError * __nullable)error{
     NSLog(@"play error");
 }
-
 #pragma mark  getter&&setter
 - (AVAudioRecorder *)recorder{
     if (!_recorder) {
@@ -74,14 +82,14 @@
         unlink([path UTF8String]);
         //这些设置参数都可以在 AVAudioSettings.h 中找到
         NSMutableDictionary *settings = [NSMutableDictionary dictionary];
-        //1.设置录制格式 wav
+        //1.设置录制格式
         [settings setValue:[NSNumber numberWithInt:kAudioFormatMPEG4AAC] forKey:AVFormatIDKey];
         //2.采样率Hz: 8000/44100/96000 每秒从音频信号中提取并组成离散信号的采样个数
         [settings setValue:[NSNumber numberWithFloat:44100.0] forKey:AVSampleRateKey];
         //3.音频通道设置 ： 1或者2
         [settings setValue:[NSNumber numberWithInt:2] forKey:AVNumberOfChannelsKey];
         //4.设置音频质量
-        [settings setValue:[NSNumber numberWithInt:AVAudioQualityLow] forKey:AVEncoderAudioQualityKey];\
+        [settings setValue:[NSNumber numberWithInt:AVAudioQualityLow] forKey:AVEncoderAudioQualityKey];
         _recorder = [[AVAudioRecorder alloc] initWithURL:[NSURL fileURLWithPath:path]
                                                 settings:settings
                                                 error:nil];

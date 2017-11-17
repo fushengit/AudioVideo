@@ -37,6 +37,9 @@
                             <constraint firstItem="W0o-VW-UB6" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="ueV-Fh-xMh"/>
                         </constraints>
                     </view>
+                    <connections>
+                        <outlet property="controBtn" destination="W0o-VW-UB6" id="T74-go-Np8"/>
+                    </connections>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>
             </objects>

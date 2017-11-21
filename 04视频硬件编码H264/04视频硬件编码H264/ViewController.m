@@ -94,7 +94,7 @@
         * kVTCompressionPropertyKey_ExpectedFrameRate // Read/write, CFNumber, Optional 期望帧率 fps
         * kVTCompressionPropertyKey_MaxKeyFrameInterval //Read/write, CFNumber<int>, Optional 同步帧(也就是关键帧)的时间间隔：gop size
      */
-    int fps = 25;
+    int fps = 10;
     CFNumberRef cfps = CFNumberCreate(NULL, kCFNumberIntType, &fps);
     OSStatus expectedFrameRateStatus =
     VTSessionSetProperty(encodeSession,
@@ -103,8 +103,8 @@
     if (expectedFrameRateStatus!=noErr) {
         NSLog(@"fail set expectedFrameRateStatus");
     }
-    
-    int syInterval = fps*2;
+    //关键帧的间隔
+    int syInterval = 10;
     CFNumberRef csyInterval = CFNumberCreate(NULL, kCFNumberIntType, &syInterval);
     OSStatus maxKeyFrameIntervalStatus =
     VTSessionSetProperty(encodeSession,
@@ -188,7 +188,7 @@ void (compressionOutputCallback)(void * CM_NULLABLE outputCallbackRefCon,
         const uint8_t *ppsPointer;
         size_t ppsSize;
         OSStatus ppsStatus =  CMVideoFormatDescriptionGetH264ParameterSetAtIndex(formatDes,
-                                                                                 0,
+                                                                                 1,
                                                                                  &ppsPointer,
                                                                                  &ppsSize,
                                                                                  NULL,
@@ -216,7 +216,9 @@ void (compressionOutputCallback)(void * CM_NULLABLE outputCallbackRefCon,
     /*
      返回的nalu数据前四个字节不是 0x00,0x00,0x00,0x01 的start code ，而是大端模式的长度length
      nalu数据的结构：
-        前四个字节+视频数据，前四个字节+视频数据，前四个字节+视频数据......
+        前四个字节+视频数据  前四个字节+视频数据  前四个字节+视频数据......
+     处理结果：
+        0x00,0x00,0x00,0x01+视频数据  0x00,0x00,0x00,0x01+视频数据  0x00,0x00,0x00,0x01+视频数据......
      处理方法：
         1.取出第一块数据的开头四个字节，将这四个字节转换成小端。这样就能得出第一条数据的视频数据的length
         2.根据视频数据的指针位置和视频数据的length可以将这一块视频数据转化成data
@@ -224,7 +226,7 @@ void (compressionOutputCallback)(void * CM_NULLABLE outputCallbackRefCon,
         4.去除第二块数据重复1的操作，直至将整个buffer的视频数据写入文件。
      */
     
-    size_t headerLenth = 4;
+    static const int headerLenth = 4;
     size_t bufferOffset = 0;
     while(bufferOffset<totalLength-headerLenth){
         uint32_t naluLength;
@@ -235,7 +237,6 @@ void (compressionOutputCallback)(void * CM_NULLABLE outputCallbackRefCon,
         [self writeEncodeData:data];
         bufferOffset += naluLength + headerLenth;
     }
-    NSLog(@"文件写入成功");
 }
 
 - (void)writeSps:(NSData*)sps Pps:(NSData*)pps{
@@ -249,6 +250,7 @@ void (compressionOutputCallback)(void * CM_NULLABLE outputCallbackRefCon,
         [fileHandle writeData:header];
         [fileHandle writeData:pps];
     }
+    NSLog(@"文件写入sps pps");
 }
 - (void)writeEncodeData:(NSData*)data{
     //h264协议 start code
@@ -259,6 +261,7 @@ void (compressionOutputCallback)(void * CM_NULLABLE outputCallbackRefCon,
         [fileHandle writeData:header];
         [fileHandle writeData:data];
     }
+    NSLog(@"文件写入data");
 }
 
 

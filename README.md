@@ -9,6 +9,6 @@
 
 ### 视频编码
 * [视频硬件编码H264](https://github.com/fushengit/AudioVideo/tree/master/04视频硬件编码H264)
-
+* [视频硬解码H264](https://github.com/fushengit/AudioVideo/tree/master/05视频硬解码码H264)
     
 

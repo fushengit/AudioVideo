@@ -26,11 +26,13 @@
     uint8_t *inputBuffer;
     //h264已经读取的大小，用来做偏移量的效果
     long inputSize;
+    //读取整个文件的大小
+    long inputMaxSize;
 }
+@property (weak, nonatomic) IBOutlet UIButton *controlBtn;
+
 @end
 
-//因为不知道每一个packet的长度，我们得根据视频分辨率大小设置一个每次最大的读取量
-const long inputMaxSize = 480*640*1.5;
 //这个可以说是h264的分割符号startcode
 const uint8_t startCode[4] = {0,0,0,1};
 
@@ -51,28 +53,25 @@ const uint8_t startCode[4] = {0,0,0,1};
     displayLink.frameInterval  = 2;
     
     inputSize = 0;
+    inputMaxSize = [NSData dataWithContentsOfURL:[NSURL fileURLWithPath:path]].length;
     inputBuffer = malloc(inputMaxSize);
 }
-
-
+- (IBAction)startDecode:(UIButton *)sender {
+    sender.hidden = true;
+    [inputStream open];
+    displayLink.paused = false;
+}
 - (void)showFrame{
     dispatch_sync(decodeQueue, ^{
-        //1.获取packetBuffer和packetSize;
-        
+        //1.获取packetBuffer和packetSize
+        if (inputSize<inputMaxSize&&inputStream.hasBytesAvailable) {
+            inputSize += [inputStream read:inputBuffer+inputSize maxLength:inputMaxSize-inputSize];
+        }
         
         //2.判断帧类型
         
     });
 }
-
-
-
-
-
-- (void)dealloc{
-    [inputStream close];
-}
-
 
 
 - (void)didReceiveMemoryWarning {

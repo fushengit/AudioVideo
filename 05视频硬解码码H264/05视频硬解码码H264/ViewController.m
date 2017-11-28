@@ -10,7 +10,6 @@
 #import <VideoToolbox/VideoToolbox.h>
 @interface ViewController ()
 {
-    
     //刷新页面工具
     CADisplayLink *displayLink;
     //解码队列
@@ -30,7 +29,7 @@
     long inputMaxSize;
     
     VTDecompressionSessionRef  decodeSession;
-    CMVideoFormatDescriptionRef videoFormatDescription;
+    CMFormatDescriptionRef formatDescriptionOut;
     uint8_t *sps;
     long spsSize;
     uint8_t *pps;
@@ -44,7 +43,6 @@
 const uint8_t startCode[4] = {0,0,0,1};
 
 @implementation ViewController
-
 - (void)viewDidLoad {
     [super viewDidLoad];
     decodeQueue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
@@ -67,7 +65,8 @@ const uint8_t startCode[4] = {0,0,0,1};
                                                         param,
                                                         paramSize,
                                                         4,
-                                                        &videoFormatDescription);
+                                                        &formatDescriptionOut);
+    
     if (formateStatus!=noErr) {
         NSLog(@"FormatDescriptionCreate fail");
         return;
@@ -77,8 +76,7 @@ const uint8_t startCode[4] = {0,0,0,1};
     const void *keys[] = {kCVPixelBufferPixelFormatTypeKey};
     
     uint32_t t = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
-    CFNumberRef type = CFNumberCreate(NULL, kCFNumberSInt32Type, &t);
-    const void *values[] = {type};
+    const void *values[] = {CFNumberCreate(NULL, kCFNumberSInt32Type, &t)};
     
     CFDictionaryRef att = CFDictionaryCreate(NULL, keys, values, 1, NULL, NULL);
     
@@ -88,21 +86,24 @@ const uint8_t startCode[4] = {0,0,0,1};
     
     OSStatus sessionStatus =
     VTDecompressionSessionCreate(NULL,
-                                 videoFormatDescription,
+                                 formatDescriptionOut,
                                  NULL,
                                  att,
                                  &VTDecompressionOutputCallbackRecord,
                                  &decodeSession);
+    CFRelease(att);
     if (sessionStatus!=noErr) {
         NSLog(@"SessionCreate fail");
         [self endDecode];
     }
 }
-- (CVPixelBufferRef)decode{
-    CVPixelBufferRef outputPixeBuffer = NULL;
+
+
+- (void)decode{
     if (!decodeSession) {
-        return NULL;
+        return;
     }
+    CVPixelBufferRef outputPixeBuffer = NULL;
     //1.创建CMBlockBufferRef
     CMBlockBufferRef blockBuffer = NULL;
     OSStatus blockBufferStatus =
@@ -117,15 +118,15 @@ const uint8_t startCode[4] = {0,0,0,1};
                                        &blockBuffer);
     if (blockBufferStatus!=noErr) {
         NSLog(@"BolkBufferCreate fail");
-        return NULL;
+        return;
     }
     //2.创建CMSampleBufferRef
     CMSampleBufferRef sampleBuffer = NULL;
     const size_t sampleSizeArray[] = {packetSize};
     OSStatus sampleBufferStatus =
-    CMSampleBufferCreateReady(NULL,
+    CMSampleBufferCreateReady(kCFAllocatorDefault,
                               blockBuffer,
-                              videoFormatDescription,
+                              formatDescriptionOut,
                               1, //sample 的数量
                               0, //sampleTimingArray 的长度
                               NULL, //sampleTimingArray 对每一个设置一些属性，这些我们并不需要
@@ -139,7 +140,7 @@ const uint8_t startCode[4] = {0,0,0,1};
     }
     if (sampleBufferStatus!=noErr) {
         NSLog(@"SampleBufferCreate fail");
-        return NULL;
+        return;
     }
     //3.编码生成
     OSStatus decodeStatus =
@@ -150,13 +151,12 @@ const uint8_t startCode[4] = {0,0,0,1};
                                       NULL); //receive information about the decode operation
     if (sampleBuffer) {
         free(sampleBuffer);
-        sampleBuffer = NULL;
+        sampleBuffer =NULL;
     }
     if (decodeStatus!=noErr) {
-        NSLog(@"DecodeFrame fail %d",decodeStatus);
-        return NULL;
+        NSLog(@"DecodeFrame fail %d",(int)decodeStatus);
+        return;
     }
-    return outputPixeBuffer;
 }
 
 void decompressionOutputCallback(void * CM_NULLABLE decompressionOutputRefCon,
@@ -166,19 +166,25 @@ void decompressionOutputCallback(void * CM_NULLABLE decompressionOutputRefCon,
                                       CM_NULLABLE CVImageBufferRef imageBuffer,
                                       CMTime presentationTimeStamp,
                                       CMTime presentationDuration ){
-    
-    
-    
+    if (imageBuffer) {
+        CIImage *ciimage = [CIImage imageWithCVPixelBuffer:imageBuffer];
+        UIImage *image = [UIImage imageWithCIImage:ciimage];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            ViewController *self = (__bridge ViewController *)(decompressionOutputRefCon);
+            ((UIImageView*)self.view).image = image;
+        });
+    }
 }
 
 - (IBAction)startDecode:(UIButton *)sender {
     sender.hidden = true;
-    NSString *path = [[NSBundle mainBundle] pathForResource:@"abc" ofType:@"h264"];
-    inputStream = [[NSInputStream alloc] initWithURL:[NSURL fileURLWithPath:path]];
+    NSString *path = [[NSBundle mainBundle] pathForResource:@"test" ofType:@"h264"];
+    inputStream = [[NSInputStream alloc] initWithFileAtPath:path];
     [inputStream open];
     
     inputSize = 0;
     inputMaxSize = [NSData dataWithContentsOfFile:path].length;
+    
     if (inputBuffer) {
         free(inputBuffer);
         inputBuffer = NULL;
@@ -193,7 +199,6 @@ void decompressionOutputCallback(void * CM_NULLABLE decompressionOutputRefCon,
     [inputStream close];
 }
 
-
 - (void)showFrame{
     dispatch_sync(decodeQueue, ^{
         //1.获取packetBuffer和packetSize
@@ -202,8 +207,7 @@ void decompressionOutputCallback(void * CM_NULLABLE decompressionOutputRefCon,
             free(packetBuffer);
             packetBuffer = NULL;
         }
-        
-        if (inputSize < inputMaxSize && inputStream.hasBytesAvailable) {
+        if (inputSize < inputMaxSize && inputStream.hasBytesAvailable) { //一般情况下只会执行一次,使得inputMaxSize等于inputSize
             inputSize += [inputStream read:inputBuffer + inputSize maxLength:inputMaxSize - inputSize];
         }
         if (memcmp(inputBuffer, startCode, 4) == 0) {
@@ -229,46 +233,29 @@ void decompressionOutputCallback(void * CM_NULLABLE decompressionOutputRefCon,
                 }
             }
         }
-        
-        
-        
-//        long thisTimeInput = 0;
-//        if (inputSize<inputMaxSize&&inputStream.hasBytesAvailable) {
-//            thisTimeInput = [inputStream read:inputBuffer maxLength:inputMaxSize-inputSize];
-//        }
-//        if (memcmp(inputBuffer, startCode, 4)==0 && thisTimeInput>4) {
-//            uint8_t *pStart = inputBuffer+4;
-//            uint8_t *pEnd = inputBuffer+thisTimeInput;
-//            while (pStart!=pEnd) {
-//                if (memcmp(pStart-3, startCode, 4)==0) {
-//                    packetSize = pStart -3 -inputBuffer;
-//                    packetBuffer = malloc(packetSize);
-//                    memcpy(packetBuffer, inputBuffer, packetSize);
-//                    inputSize += packetSize;
-//                    memmove(inputBuffer, inputBuffer+packetSize, inputMaxSize-inputSize);
-//                    break;
-//                }else{
-//                    ++pStart;
-//                }
-//            }
-//        }
-        
-        
-        //2.判断帧类型（根据码流结构可知，startcode后面紧跟着就是码流的类型）
         if (packetBuffer==NULL||packetSize==0) {
             [self endDecode];
             return;
         }
-        uint32_t nalSize = (uint32_t)(packetSize - 4);
-        uint32_t *pNalSize = (uint32_t *)packetBuffer;
-        *pNalSize = CFSwapInt32HostToBig(nalSize);
         
-        CVPixelBufferRef pixelBuffer = NULL;
-        switch (packetBuffer[4]&0x1f) {
+        //2.将packet的前4个字节换成大端的长度
+        //大端：高字节保存在低地址
+        //小端：高字节保存在高地址
+        //大小端的转换实际上及时将字节顺序换一下即可
+        uint32_t nalSize = (uint32_t)(packetSize - 4);
+        uint8_t *pNalSize = (uint8_t*)(&nalSize);
+        packetBuffer[0] = pNalSize[3];
+        packetBuffer[1] = pNalSize[2];
+        packetBuffer[2] = pNalSize[1];
+        packetBuffer[3] = pNalSize[0];
+        
+        //3.判断帧类型（根据码流结构可知，startcode后面紧跟着就是码流的类型）
+        int nalType = packetBuffer[4] & 0x1f;
+        switch (nalType) {
             case 0x05:
                 //IDR frame
                 [self initDecodeSession];
-                pixelBuffer = [self decode];
+                [self decode];
                 break;
             case 0x07:
                 //sps
@@ -292,18 +279,11 @@ void decompressionOutputCallback(void * CM_NULLABLE decompressionOutputRefCon,
                 break;
             default:
                 // B/P frame
-                pixelBuffer = [self decode];
+                [self decode];
                 break;
         }
-        //3.展示
-        if (pixelBuffer) {
-            CIImage *ciimage = [CIImage imageWithCVPixelBuffer:pixelBuffer];
-            UIImage *image = [UIImage imageWithCIImage:ciimage];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                ((UIImageView*)self.view).image = image;
-            });
-        }
     });
+
 }
 
 
